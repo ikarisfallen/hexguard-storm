@@ -382,6 +382,27 @@ function pickSafeLargeRow(col) {
     return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
+// Picks N rows for col-0 spawns that don't collide with any hex already
+// occupied by an existing enemy (e.g., a giant whose SW hex extends into col 0).
+function pickFreeCol0Rows(count, existingEnemies) {
+    const occupied = new Set();
+    for (const e of existingEnemies) {
+        for (const cell of enemyHexes(e)) {
+            if (cell.col === 0) occupied.add(cell.row);
+        }
+    }
+    const free = [];
+    for (let r = 0; r < ROWS; r++) {
+        if (!occupied.has(r)) free.push(r);
+    }
+    // Fisher-Yates shuffle
+    for (let i = free.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [free[i], free[j]] = [free[j], free[i]];
+    }
+    return free.slice(0, count);
+}
+
 const WAVES = [
     // ── Wave 1: 3 slimes in random rows (easy intro) ──
     () => pickRandomRows(3).map(r => createEnemy(0, r, { hp: 3, name: 'Slime' })),
@@ -410,32 +431,31 @@ const WAVES = [
     },
 
     // ── Wave 4: A 3-hex Big Flan giant + slime escort ──
+    // The giant spawns FIRST so we can route the slimes around any col-0 hex
+    // the giant's SW corner extends into.
     () => {
-        const slimeRows = pickRandomRows(4);
-        return [
-            createEnemy(0, slimeRows[0], { hp: 3, name: 'Slime' }),
-            createEnemy(0, slimeRows[1], { hp: 3, name: 'Slime' }),
-            createEnemy(0, slimeRows[2], { hp: 3, name: 'Slime' }),
-            createEnemy(0, slimeRows[3], { hp: 3, name: 'Slime' }),
-            // Large enemy: spawned at col 1 so its SW/SE neighbors stay on-grid
-            createEnemy(1, pickSafeLargeRow(1), {
-                hp: 18, name: 'Big Flan', color: '#e17055', atk: 4, large: true,
-            }),
-        ];
+        const enemies = [];
+        enemies.push(createEnemy(1, pickSafeLargeRow(1), {
+            hp: 18, name: 'Big Flan', color: '#e17055', atk: 4, large: true,
+        }));
+        for (const r of pickFreeCol0Rows(4, enemies)) {
+            enemies.push(createEnemy(0, r, { hp: 3, name: 'Slime' }));
+        }
+        return enemies;
     },
 
-    // ── Wave 5: Two large enemies + tonberry swarm ──
+    // ── Wave 5: A Big Bomb giant + tonberry swarm ──
     () => {
-        const swarmRows = pickRandomRows(4);
-        return [
-            createEnemy(0, swarmRows[0], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
-            createEnemy(0, swarmRows[1], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
-            createEnemy(0, swarmRows[2], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
-            createEnemy(0, swarmRows[3], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
-            createEnemy(1, pickSafeLargeRow(1), {
-                hp: 22, name: 'Big Bomb', color: '#d63031', atk: 5, large: true,
-            }),
-        ];
+        const enemies = [];
+        enemies.push(createEnemy(1, pickSafeLargeRow(1), {
+            hp: 22, name: 'Big Bomb', color: '#d63031', atk: 5, large: true,
+        }));
+        for (const r of pickFreeCol0Rows(4, enemies)) {
+            enemies.push(createEnemy(0, r, {
+                hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3,
+            }));
+        }
+        return enemies;
     },
 ];
 

@@ -32,7 +32,7 @@
 const COLS = 8;               // Total number of columns on the board
 const ROWS = 8;               // Total number of rows on the board (taller field for more vertical depth)
 const PLAYER_COLS_START = 4;  // First column where the player can place heroes (cols 0-3 = enemy side)
-const MAX_HEROES = 3;         // The most heroes the player can place on the board
+const MAX_HEROES = 5;         // The most heroes the player can place on the board
 
 // ── Hex grid geometry (POINTY-TOP hexagons, odd-r offset) ──
 // "Pointy-top" means each hex has a vertex at the very top and very bottom,
@@ -300,15 +300,45 @@ let state = {
 
 function createEnemy(col, row, opts = {}) {
     return {
-        col,                          // Which column the enemy is in (starts on the left side)
-        row,                          // Which row the enemy is in
+        col,                          // Which column the enemy's TOP hex is in (starts on the left side)
+        row,                          // Which row the enemy's TOP hex is in
         hp: opts.hp || 4,             // Current hit points
         maxHp: opts.hp || 4,          // Maximum hit points (used for the HP bar width)
         atk: opts.atk || 1,           // How much damage this enemy deals when it hits a unit
         speed: opts.speed || 1,       // How many hexes the enemy moves to the right each turn
         color: opts.color || '#e84393',  // Color used to draw the enemy
-        name: opts.name || 'Monster'  // Display name shown under the enemy
+        name: opts.name || 'Monster', // Display name shown under the enemy
+        large: !!opts.large,          // If true, occupies 3 hexes in a triangle: top + SW + SE
     };
+}
+
+// Returns the list of hexes a given enemy currently occupies.
+// Normal enemies occupy 1 hex. Large enemies occupy a triangle of 3 hexes:
+// the "top" hex (enemy.col, enemy.row), plus its SW and SE neighbors.
+//
+//      [top]
+//     /    \
+//   [SW]  [SE]
+function enemyHexes(enemy) {
+    const cells = [{ col: enemy.col, row: enemy.row }];
+    if (enemy.large) {
+        const sw = neighbor(enemy.col, enemy.row, 'SW');
+        const se = neighbor(enemy.col, enemy.row, 'SE');
+        if (sw) cells.push(sw);
+        if (se) cells.push(se);
+    }
+    return cells;
+}
+
+// Returns the cells the enemy WOULD newly occupy if it advanced east by 1.
+// These are the cells that need to be empty for the enemy to be able to advance.
+// (Cells the enemy would leave behind don't matter for movement.)
+function enemyFrontCells(enemy) {
+    const current = enemyHexes(enemy);
+    const moved = enemy.large
+        ? enemyHexes({ ...enemy, col: enemy.col + 1 })
+        : [{ col: enemy.col + 1, row: enemy.row }];
+    return moved.filter(m => !current.some(c => c.col === m.col && c.row === m.row));
 }
 
 
@@ -338,6 +368,20 @@ function pickRandomRows(count) {
     return all.slice(0, count);
 }
 
+// Picks a row safe for a LARGE enemy whose top hex is at the given col.
+// Large enemies span their top hex + the SW + SE neighbors below it, so:
+//   - row must allow row+1 to exist (row <= ROWS - 2)
+//   - the SW and SE neighbors must be in-bounds for the given col + row parity
+function pickSafeLargeRow(col) {
+    const candidates = [];
+    for (let r = 0; r < ROWS - 1; r++) {
+        const sw = neighbor(col, r, 'SW');
+        const se = neighbor(col, r, 'SE');
+        if (sw && se) candidates.push(r);
+    }
+    return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
 const WAVES = [
     // ── Wave 1: 3 slimes in random rows (easy intro) ──
     () => pickRandomRows(3).map(r => createEnemy(0, r, { hp: 3, name: 'Slime' })),
@@ -365,28 +409,32 @@ const WAVES = [
         ];
     },
 
-    // ── Wave 4: Beefy frontline ──
+    // ── Wave 4: A 3-hex Big Flan giant + slime escort ──
     () => {
-        const rows = pickRandomRows(5);
+        const slimeRows = pickRandomRows(4);
         return [
-            createEnemy(0, rows[0], { hp: 3, name: 'Slime' }),
-            createEnemy(0, rows[1], { hp: 12, name: 'Big Flan', color: '#e17055', atk: 3 }),
-            createEnemy(0, rows[2], { hp: 12, name: 'Big Flan', color: '#e17055', atk: 3 }),
-            createEnemy(0, rows[3], { hp: 3, name: 'Slime' }),
-            createEnemy(0, rows[4], { hp: 3, name: 'Slime' }),
+            createEnemy(0, slimeRows[0], { hp: 3, name: 'Slime' }),
+            createEnemy(0, slimeRows[1], { hp: 3, name: 'Slime' }),
+            createEnemy(0, slimeRows[2], { hp: 3, name: 'Slime' }),
+            createEnemy(0, slimeRows[3], { hp: 3, name: 'Slime' }),
+            // Large enemy: spawned at col 1 so its SW/SE neighbors stay on-grid
+            createEnemy(1, pickSafeLargeRow(1), {
+                hp: 18, name: 'Big Flan', color: '#e17055', atk: 4, large: true,
+            }),
         ];
     },
 
-    // ── Wave 5: High-damage swarm including a mini-boss ──
+    // ── Wave 5: Two large enemies + tonberry swarm ──
     () => {
-        const rows = pickRandomRows(6);
+        const swarmRows = pickRandomRows(4);
         return [
-            createEnemy(0, rows[0], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
-            createEnemy(0, rows[1], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
-            createEnemy(0, rows[2], { hp: 14, name: 'Big Bomb', color: '#d63031', atk: 4 }),
-            createEnemy(0, rows[3], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
-            createEnemy(0, rows[4], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
-            createEnemy(0, rows[5], { hp: 14, name: 'Big Bomb', color: '#d63031', atk: 4 }),
+            createEnemy(0, swarmRows[0], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
+            createEnemy(0, swarmRows[1], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
+            createEnemy(0, swarmRows[2], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
+            createEnemy(0, swarmRows[3], { hp: 5, name: 'Tonberry', color: '#00cec9', atk: 3 }),
+            createEnemy(1, pickSafeLargeRow(1), {
+                hp: 22, name: 'Big Bomb', color: '#d63031', atk: 5, large: true,
+            }),
         ];
     },
 ];
@@ -527,6 +575,12 @@ canvas.addEventListener('mouseup', (e) => {
     if (!hex || hex.col < PLAYER_COLS_START) {
         draw();
         return;   // Invalid drop → unit stays where it was
+    }
+
+    // Reject if any enemy is occupying that hex (large enemies span 3 hexes)
+    if (state.enemies.some(e => enemyOccupies(e, hex.col, hex.row))) {
+        draw();
+        return;
     }
 
     const occupantIdx = state.units.findIndex(u => u.col === hex.col && u.row === hex.row);
@@ -680,26 +734,29 @@ async function runCombatTurn() {
     state.phase = 'monster_move';
 
     for (const enemy of state.enemies) {
-        // "Directly in front" for an east-bound enemy is its E neighbor —
-        // always (col+1, row) regardless of row parity, for pointy-top hexes.
-        const front = neighbor(enemy.col, enemy.row, 'E');
+        // The "front" is the set of hex(es) the enemy would NEWLY occupy if it
+        // moved east by one. For normal enemies this is 1 hex; for large
+        // (triangle) enemies it can be 1 or 2 hexes depending on row parity.
+        const front = enemyFrontCells(enemy);
 
-        // Is there a hero standing in that hex?
-        const blocker = front
-            ? state.units.find(u => u.col === front.col && u.row === front.row)
-            : null;
+        // Find heroes standing in any of the front cells
+        const blockers = state.units.filter(u =>
+            front.some(f => f.col === u.col && f.row === u.row)
+        );
 
-        if (blocker) {
-            // Blocked! Attack the hero in front instead of moving.
-            blocker.hp -= enemy.atk;
-            state.attackEffects.push({
-                col: blocker.col,
-                row: blocker.row,
-                timer: 12,
-                color: '#ff7675',
-            });
+        if (blockers.length > 0) {
+            // Blocked! Attack every hero in the way (large enemies can hit two heroes at once).
+            for (const blocker of blockers) {
+                blocker.hp -= enemy.atk;
+                state.attackEffects.push({
+                    col: blocker.col,
+                    row: blocker.row,
+                    timer: 12,
+                    color: '#ff7675',
+                });
+            }
         } else {
-            // Nothing in front → advance east one hex
+            // Nothing blocking → advance east one hex
             enemy.col += enemy.speed;
         }
     }
@@ -717,10 +774,11 @@ async function runCombatTurn() {
     }
 
     // ── Loss condition #2: enemy reached the final column ──
-    // COLS - 1 is the last column (col 7 when COLS = 8). The moment an enemy
-    // lands on that column, the player loses — they don't even get one more turn.
+    // COLS - 1 is the last column (col 7 when COLS = 8). Large enemies span
+    // multiple hexes, so check ANY of their occupied cells against the final col.
     for (const enemy of state.enemies) {
-        if (enemy.col >= COLS - 1) {
+        const cells = enemyHexes(enemy);
+        if (cells.some(c => c.col >= COLS - 1)) {
             state.phase = 'lost';
             setMessage('Defeated! An enemy reached the final row!');
             return;
@@ -736,9 +794,10 @@ async function runCombatTurn() {
 }
 
 // ── Helper: Does this enemy occupy the given hex? ──
-// Each enemy occupies exactly one hex.
+// For normal enemies: just (enemy.col, enemy.row).
+// For large enemies: any of their 3 triangle hexes.
 function enemyOccupies(enemy, col, row) {
-    return enemy.col === col && enemy.row === row;
+    return enemyHexes(enemy).some(c => c.col === col && c.row === row);
 }
 
 
@@ -807,25 +866,69 @@ function draw() {
     state.attackEffects = state.attackEffects.filter(e => e.timer > 0);
     state.healEffects = state.healEffects.filter(e => e.timer > 0);
 
-    // ── Draw enemies (centered on their hex) ──
+    // ── Draw enemies (centered on their hex, or spanning a triangle if large) ──
     for (const enemy of state.enemies) {
-        const cen = hexCenter(enemy.col, enemy.row);
-        const x = cen.x - CELL / 2;
-        const y = cen.y - CELL / 2;
+        const cells = enemyHexes(enemy);
 
-        drawEnemySprite(enemy, x, y, CELL, CELL);
+        if (enemy.large && cells.length === 3) {
+            // ── LARGE enemy: triangle of 3 hexes (top + SW + SE) ──
+            // First, paint a colored "footprint" on each occupied hex so the
+            // player can see exactly where the giant is standing.
+            for (const cell of cells) {
+                const hc = hexCenter(cell.col, cell.row);
+                drawHexPath(hc.x, hc.y, HEX_SIZE - 2);
+                ctx.fillStyle = enemy.color + '33';   // semi-transparent fill
+                ctx.fill();
+                ctx.strokeStyle = enemy.color;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
 
-        // HP bar at the top
-        drawHPBar(cen.x - CELL / 2 + 8, y + 4, CELL - 16, enemy.hp, enemy.maxHp, '#e84393');
+            // Compute the centroid of the 3 hex centers — the giant's sprite is
+            // drawn here, sized to fill the triangle's bounding box.
+            let sumX = 0, sumY = 0;
+            for (const cell of cells) {
+                const hc = hexCenter(cell.col, cell.row);
+                sumX += hc.x;
+                sumY += hc.y;
+            }
+            const cx = sumX / cells.length;
+            const cy = sumY / cells.length;
 
-        // Enemy name at the bottom (outlined for readability)
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 10px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 3;
-        ctx.strokeText(enemy.name, cen.x, y + CELL - 4);
-        ctx.fillText(enemy.name, cen.x, y + CELL - 4);
+            // Bounding box ≈ 2 hexes wide and ~2.5 hexes tall — use 1.6× sprite size
+            const bigSize = Math.round(CELL * 1.6);
+            const x = cx - bigSize / 2;
+            const y = cy - bigSize / 2;
+            drawEnemySprite(enemy, x, y, bigSize, bigSize);
+
+            // HP bar across the full top of the bounding box
+            drawHPBar(cx - bigSize / 2 + 12, y + 6, bigSize - 24, enemy.hp, enemy.maxHp, '#e84393');
+
+            // Name label at the bottom (outlined)
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 3;
+            ctx.strokeText(enemy.name, cx, y + bigSize - 4);
+            ctx.fillText(enemy.name, cx, y + bigSize - 4);
+        } else {
+            // ── NORMAL enemy: single hex ──
+            const cen = hexCenter(enemy.col, enemy.row);
+            const x = cen.x - CELL / 2;
+            const y = cen.y - CELL / 2;
+
+            drawEnemySprite(enemy, x, y, CELL, CELL);
+            drawHPBar(cen.x - CELL / 2 + 8, y + 4, CELL - 16, enemy.hp, enemy.maxHp, '#e84393');
+
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 3;
+            ctx.strokeText(enemy.name, cen.x, y + CELL - 4);
+            ctx.fillText(enemy.name, cen.x, y + CELL - 4);
+        }
     }
 
     // ── Draw player units (centered on their hex) ──
@@ -876,11 +979,12 @@ function draw() {
 
             // ── DROP TARGET HEX OUTLINE ──
             if (hoverHex) {
+                const occupiedByOtherUnit = state.units.some((other, i) =>
+                    i !== drag.unitIndex && other.col === hoverHex.col && other.row === hoverHex.row);
+                const occupiedByEnemy = state.enemies.some(e =>
+                    enemyOccupies(e, hoverHex.col, hoverHex.row));
                 const validDrop = hoverHex.col >= PLAYER_COLS_START &&
-                                  !state.units.some((other, i) =>
-                                      i !== drag.unitIndex &&
-                                      other.col === hoverHex.col &&
-                                      other.row === hoverHex.row);
+                                  !occupiedByOtherUnit && !occupiedByEnemy;
                 const c = hexCenter(hoverHex.col, hoverHex.row);
                 drawHexPath(c.x, c.y, HEX_SIZE - 1);
                 ctx.strokeStyle = validDrop ? '#55efc4' : '#e74c3c';

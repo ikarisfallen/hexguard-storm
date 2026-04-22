@@ -469,25 +469,41 @@ function spawnWave() {
 
 // =============================================================================
 // 5. STARTING HERO ROSTER
-//    The player automatically gets one of each unit type at the back of the
-//    field (column 7). They drag them to wherever they want before pressing
-//    Start. No placement, no selection — the roster is fixed.
+//    The player automatically gets one of each unit type at random hexes
+//    on the player side of the field. They drag them to wherever they want
+//    before pressing Start. The mix is fixed (one of each type), but where
+//    each hero starts is randomized on every game / restart.
 // =============================================================================
 
-// Default starting positions for each hero type. They're spread across the
-// player's back column so the player has a clean slate to reposition from.
-const STARTING_HEROES = [
-    { type: 'blackmage', col: 7, row: 1 },
-    { type: 'soldier',   col: 7, row: 3 },
-    { type: 'archer',    col: 7, row: 4 },
-    { type: 'whitemage', col: 7, row: 6 },
-];
-
-// Builds a fresh array of hero unit objects ready to be dropped into state.units.
+// Builds a fresh array of 4 hero unit objects, one of each type, placed on
+// distinct random hexes within the player's territory (columns 4-7).
 function makeStartingHeroes() {
-    return STARTING_HEROES.map(({ type, col, row }) => {
+    const heroTypes = ['blackmage', 'soldier', 'archer', 'whitemage'];
+
+    // Collect every hex on the player's side of the board
+    const hexes = [];
+    for (let c = PLAYER_COLS_START; c < COLS; c++) {
+        for (let r = 0; r < ROWS; r++) {
+            hexes.push({ col: c, row: r });
+        }
+    }
+
+    // Shuffle (Fisher-Yates) so we get a random subset
+    for (let i = hexes.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [hexes[i], hexes[j]] = [hexes[j], hexes[i]];
+    }
+
+    // Take the first 4 shuffled hexes and assign one hero type to each
+    return heroTypes.map((type, i) => {
         const def = UNIT_DEFS[type];
-        return { type, col, row, hp: def.hp, maxHp: def.hp };
+        return {
+            type,
+            col: hexes[i].col,
+            row: hexes[i].row,
+            hp: def.hp,
+            maxHp: def.hp,
+        };
     });
 }
 

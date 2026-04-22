@@ -32,7 +32,8 @@
 const COLS = 8;               // Total number of columns on the board
 const ROWS = 8;               // Total number of rows on the board (taller field for more vertical depth)
 const PLAYER_COLS_START = 4;  // First column where the player can place heroes (cols 0-3 = enemy side)
-const MAX_HEROES = 5;         // The most heroes the player can place on the board
+// The player gets one hero of each type (Black Mage, Soldier, Archer, White Mage)
+// auto-spawned at the start of every game — no choosing, no placing, just dragging.
 
 // ── Hex grid geometry (POINTY-TOP hexagons, odd-r offset) ──
 // "Pointy-top" means each hex has a vertex at the very top and very bottom,
@@ -271,8 +272,6 @@ let state = {
     units: [],             // Array of all player units on the board.
     enemies: [],           // Array of all enemies currently alive on the board.
 
-    selectedType: 'blackmage',  // Which unit type is selected in the bottom bar (for placing new units)
-
     // ── Drag-and-drop state ──
     // When the player is dragging a unit, this object tracks which unit and where the mouse is.
     // It's null whenever no drag is in progress.
@@ -469,35 +468,27 @@ function spawnWave() {
 
 
 // =============================================================================
-// 5. UI SETUP — UNIT SELECTION BUTTONS
-//    This code runs once when the page loads. It creates one button for each
-//    unit type (Black Mage, Soldier, etc.) and adds it to the bar below the grid.
+// 5. STARTING HERO ROSTER
+//    The player automatically gets one of each unit type at the back of the
+//    field (column 7). They drag them to wherever they want before pressing
+//    Start. No placement, no selection — the roster is fixed.
 // =============================================================================
 
-const unitBar = document.getElementById('unit-bar');
+// Default starting positions for each hero type. They're spread across the
+// player's back column so the player has a clean slate to reposition from.
+const STARTING_HEROES = [
+    { type: 'blackmage', col: 7, row: 1 },
+    { type: 'soldier',   col: 7, row: 3 },
+    { type: 'archer',    col: 7, row: 4 },
+    { type: 'whitemage', col: 7, row: 6 },
+];
 
-// Loop through every unit type defined in UNIT_DEFS.
-// "Object.entries" turns { blackmage: {...}, soldier: {...} } into an array of pairs:
-//   [ ['blackmage', {...}], ['soldier', {...}], ... ]
-for (const [key, def] of Object.entries(UNIT_DEFS)) {
-    // Create a new <button> element for this unit type
-    const btn = document.createElement('button');
-    btn.className = 'unit-btn' + (key === state.selectedType ? ' selected' : '');
-    btn.textContent = def.name;                    // e.g. "Black Mage"
-    btn.style.borderBottomColor = def.color;       // Color accent on the button
-    btn.dataset.type = key;                        // Store the type key for reference
-
-    // When this button is clicked, mark it as the selected unit type.
-    btn.addEventListener('click', () => {
-        // Remove the "selected" highlight from ALL unit buttons...
-        document.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('selected'));
-        // ...then add it to the one that was just clicked.
-        btn.classList.add('selected');
-        state.selectedType = key;  // Now clicking the grid will place this unit type
+// Builds a fresh array of hero unit objects ready to be dropped into state.units.
+function makeStartingHeroes() {
+    return STARTING_HEROES.map(({ type, col, row }) => {
+        const def = UNIT_DEFS[type];
+        return { type, col, row, hp: def.hp, maxHp: def.hp };
     });
-
-    // Add the button to the page
-    unitBar.appendChild(btn);
 }
 
 
@@ -506,14 +497,16 @@ for (const [key, def] of Object.entries(UNIT_DEFS)) {
 //    Handles clicks on the grid (to place units) and button presses.
 // =============================================================================
 
-// ── Player input: click to place a new unit, drag to move existing units ──
+// ── Player input: drag heroes to reposition them ──
 //
 // Behaviors:
-//   - mousedown on an existing unit       → start dragging it
-//   - mousedown on an empty player cell   → place a new unit of the selected type
-//   - mousemove while dragging            → update the cursor position (for the drag preview)
-//   - mouseup over a valid empty cell     → drop the unit there (move it)
-//   - mouseup elsewhere                   → cancel the drag (unit stays where it was)
+//   - mousedown on an existing hero  → start dragging it
+//   - mousemove while dragging       → update the drag preview position
+//   - mouseup over a valid empty hex → drop the hero there
+//   - mouseup elsewhere              → cancel the drag (hero stays put)
+//
+// (There is no longer a "placement" path — the player gets a fixed roster of
+// 4 heroes auto-spawned at game start, and can only rearrange them.)
 
 // Helper: convert a mouse event into raw pixel coords + the hex it's over (or null)
 function getMousePos(e) {
@@ -531,35 +524,12 @@ canvas.addEventListener('mousedown', (e) => {
     const { x, y, hex } = getMousePos(e);
     if (!hex) return;   // Clicked outside the grid
 
-    // If there's a unit in the clicked hex → start a drag
+    // Find the hero (if any) in the clicked hex and start dragging it
     const unitIdx = state.units.findIndex(u => u.col === hex.col && u.row === hex.row);
-    if (unitIdx !== -1) {
-        state.dragging = { unitIndex: unitIdx, mouseX: x, mouseY: y };
-        canvas.style.cursor = 'grabbing';
-        draw();
-        return;
-    }
+    if (unitIdx === -1) return;
 
-    // ── Placing a NEW unit ──
-    if (state.phase !== 'setup') {
-        setMessage('No new heroes once the game has started — drag to reposition instead.');
-        return;
-    }
-    if (state.units.length >= MAX_HEROES) {
-        setMessage(`You can place at most ${MAX_HEROES} heroes. Drag existing ones to reposition.`);
-        return;
-    }
-    if (hex.col < PLAYER_COLS_START) return;
-
-    const def = UNIT_DEFS[state.selectedType];
-    state.units.push({
-        type: state.selectedType,
-        col: hex.col,
-        row: hex.row,
-        hp: def.hp,
-        maxHp: def.hp,
-    });
-    updateSetupMessage();
+    state.dragging = { unitIndex: unitIdx, mouseX: x, mouseY: y };
+    canvas.style.cursor = 'grabbing';
     draw();
 });
 
@@ -637,14 +607,14 @@ document.getElementById('btn-start').addEventListener('click', () => {
 document.getElementById('btn-restart').addEventListener('click', () => {
     state.phase = 'setup';
     state.wave = 1;
-    state.units = [];
+    state.units = makeStartingHeroes();   // Always start with the full 4-hero roster
     state.enemies = [];
     state.attackEffects = [];
     state.healEffects = [];
     state.dragging = null;
     state.turnTimer = state.turnDuration;
     spawnWave();           // Spawn the first wave so the player can see what's coming
-    updateSetupMessage();  // Shows "Place heroes (0/3)..."
+    setMessage('Drag your heroes into position, then press Start.');
     updateHUD();
     updateStartButton();
     draw();
@@ -655,19 +625,6 @@ document.getElementById('btn-restart').addEventListener('click', () => {
 function updateStartButton() {
     const btn = document.getElementById('btn-start');
     btn.disabled = (state.phase !== 'setup');
-}
-
-// Helper: show the current hero-placement progress during setup.
-// Called whenever a unit is placed or removed, or the game is restarted.
-function updateSetupMessage() {
-    if (state.phase === 'setup') {
-        const n = state.units.length;
-        if (n < MAX_HEROES) {
-            setMessage(`Place heroes (${n}/${MAX_HEROES}). Drag to move. Press Start when ready.`);
-        } else {
-            setMessage(`All ${MAX_HEROES} heroes placed. Drag to reposition, then press Start.`);
-        }
-    }
 }
 
 
@@ -1733,9 +1690,10 @@ function gameLoop(timestamp) {
 // 12. START THE GAME
 // =============================================================================
 
+state.units = makeStartingHeroes();       // Auto-spawn the full 4-hero roster
 spawnWave();                              // Spawn the first wave immediately so player can plan
 state.turnTimer = state.turnDuration;     // Initialize the timer (won't tick until 'planning')
-updateSetupMessage();                     // "Place heroes (0/3)..."
+setMessage('Drag your heroes into position, then press Start.');
 updateHUD();
 updateStartButton();                      // Make sure the Start button is enabled
 requestAnimationFrame(gameLoop);          // Kick off the render loop (timer only ticks in 'planning')

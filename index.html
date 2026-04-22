@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hexguard Storm</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', sans-serif;
+            color: #eee;
+        }
+        #header {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+            margin-bottom: 12px;
+        }
+        #header h1 {
+            font-size: 22px;
+            color: #7ec8e3;
+        }
+        #info {
+            font-size: 14px;
+            color: #aaa;
+        }
+        canvas {
+            border: 2px solid #333;
+            cursor: pointer;
+            background: #0f3460;
+        }
+        #unit-bar {
+            display: flex;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        .unit-btn {
+            padding: 8px 16px;
+            border: 2px solid #555;
+            border-radius: 6px;
+            background: #16213e;
+            color: #eee;
+            cursor: pointer;
+            font-size: 13px;
+            transition: border-color 0.2s;
+        }
+        .unit-btn:hover { border-color: #7ec8e3; }
+        .unit-btn.selected { border-color: #e8c547; background: #1a1a4e; }
+        #controls {
+            margin-top: 12px;
+            display: flex;
+            gap: 10px;
+        }
+        #controls button {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        #btn-start { background: #27ae60; color: #fff; }
+        #btn-start:hover { background: #1e8449; }
+        #btn-start:disabled { background: #444; color: #888; cursor: not-allowed; }
+        #btn-restart { background: #555; color: #fff; }
+        #btn-restart:hover { background: #777; }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>Hexguard Storm</h1>
+        <span id="info">Wave: <span id="wave-num">1</span> | Stage: <span id="stage-num">1</span></span>
+    </div>
+    <canvas id="game" width="800" height="800"></canvas>
+    <div id="unit-bar"></div>
+    <div id="controls">
+        <button id="btn-start">Start</button>
+        <button id="btn-restart">Restart</button>
+    </div>
+    <p id="message" style="margin-top:10px; font-size:16px; color:#e8c547; min-height:24px;"></p>
+    <script src="game.js"></script>
+</body>
+</html>
